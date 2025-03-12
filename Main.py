@@ -165,3 +165,145 @@ def register():
             messagebox.showerror("Registration Failed", "All fields are required.")
 
     Button(register_window, text="Register", font=("Times New Roman", 14), bg="blue", fg="white", command=process_register).pack(pady=10)
+    def logout():
+    global logged_in_user
+    logged_in_user = None
+    setup_main_screen() 
+
+def return_to_main():
+    for widget in root.winfo_children():
+        widget.destroy()
+    setup_main_screen()
+
+def show_emergency_form(emergency_type):
+    global logged_in_user
+
+    # Clear previous widgets
+    for widget in root.winfo_children():
+        widget.destroy()
+
+    # Display the selected emergency type message
+    Label(root, text=f"Welcome, you have chosen {emergency_type} Emergency", font=("Times New Roman", 30, "bold"), bg="lightgray").pack(pady=40)
+
+    # Initialize the emergency types dropdown dynamically
+    if emergency_type == "Police":
+        emergency_values = [
+            "Burglary", "Robbery", "Assault", "Theft", "Domestic Violence", "Kidnapping",
+            "Missing Persons", "Traffic Accidents", "Drug-Related Incident", "Firearms Incident",
+            "Homicide", "Vandalism", "Public Disturbance"
+        ]
+    elif emergency_type == "Hospital":
+        emergency_values = [
+            "General Emergency", "Cardiac Emergency", "Trauma Emergency", "Pediatric Emergency",
+            "OB-GYN Emergency", "Poisoning", "COVID-19 or Infectious Disease", "Burn Injuries",
+            "Choking", "Seizures", "Stroke", "Fractures", "Allergic Reactions", "Heat Stroke"
+        ]
+    else:  # Fire Emergency
+        emergency_values = [
+            "Fire Incident", "Gas Leak", "Electrical Fire", "Smoke Inhalation", "Explosion", 
+            "Wildfire", "Rescue Operations", "Vehicle Fire", "Fireworks Accident", "Fire Hazards", 
+            "Burn Injuries"
+        ]
+
+    # Emergency dropdown (Dynamic based on selected emergency type)
+    emergency_dropdown = ttk.Combobox(root, values=emergency_values, state="readonly", width=68, font=("Times New Roman", 18))
+    emergency_dropdown.pack(pady=10)
+    emergency_dropdown.current(0)
+
+    # User details (if logged in)
+    if logged_in_user:
+        conn = sqlite3.connect("emergency_db.sqlite")
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT address, sex, bloodtype, medical_conditions, emergency_contact_person, emergency_contact_number 
+            FROM users WHERE username = ?
+        """, (logged_in_user,))
+        user_data = cursor.fetchone()
+        conn.close()
+
+        if user_data:
+            user_address, user_sex, user_bloodtype, user_medical_conditions, user_emergency_contact_person, user_contact_number = user_data
+        else:
+            user_address = user_sex = user_bloodtype = user_medical_conditions = user_emergency_contact_person = user_contact_number = "N/A"
+
+        Label(root, text=f"Name: {logged_in_user}", font=("Times New Roman", 18), bg="lightgray").pack()
+        Label(root, text=f"Address: {user_address}", font=("Times New Roman", 18), bg="lightgray").pack()
+        Label(root, text=f"Sex: {user_sex}", font=("Times New Roman", 18), bg="lightgray").pack()
+        Label(root, text=f"Blood Type: {user_bloodtype}", font=("Times New Roman", 18), bg="lightgray").pack()
+        Label(root, text=f"Medical Conditions: {user_medical_conditions}", font=("Times New Roman", 18), bg="lightgray").pack()
+        Label(root, text=f"Emergency Contact Person: {user_emergency_contact_person}", font=("Times New Roman", 18), bg="lightgray").pack()
+        Label(root, text=f"Emergency Contact Number: {user_contact_number}", font=("Times New Roman", 18), bg="lightgray").pack()
+
+    else:
+        # User is not logged in, display input fields
+        Label(root, text="Please fill up the boxes to send an authorized personnel to your location.", font=("Times New Roman", 20), bg="lightgray").pack(pady=20)
+
+        Label(root, text="Name:", font=("Times New Roman", 18), bg="lightgray").pack()
+        name_entry = Entry(root, width=70, font=("Times New Roman", 18))
+        name_entry.pack(pady=10)
+
+        Label(root, text="Address:", font=("Times New Roman", 18), bg="lightgray").pack()
+        address_entry = Entry(root, width=70, font=("Times New Roman", 18))
+        address_entry.pack(pady=10)
+
+        Label(root, text="Emergency Contact Number:", font=("Times New Roman", 18), bg="lightgray").pack()
+        contact_number_entry = Entry(root, width=70, font=("Times New Roman", 18))
+        contact_number_entry.pack(pady=10)
+
+    # Function to save the entered data to the database
+    def save_to_db():
+        global logged_in_user
+
+        emergency_type_selected = emergency_dropdown.get()
+
+        if logged_in_user:
+            conn = sqlite3.connect("emergency_db.sqlite")
+            cursor = conn.cursor()
+            cursor.execute("SELECT address, emergency_contact_person, emergency_contact_number FROM users WHERE username = ?", (logged_in_user,))
+            user_data = cursor.fetchone()
+            conn.close()
+
+            if not user_data:
+                messagebox.showerror("Error", "User data not found.")
+                return
+
+            name = logged_in_user
+            address = user_data[0]
+            contact_person = user_data[1]
+            contact_number = user_data[2] if user_data[2] != "" else "N/A"
+
+        else:
+            name = name_entry.get()
+            address = address_entry.get()
+            contact_number = contact_number_entry.get()
+            contact_person = "N/A"  # Default if not logged in
+
+            if not name or not address or not contact_number:
+                messagebox.showwarning("Input Error", "Please fill in all fields.")
+                return
+
+        table_mapping = {
+            "Police": "police_emergencies",
+            "Hospital": "hospital_emergencies",
+            "Fire": "fire_emergencies"
+        }
+
+        table_name = table_mapping.get(emergency_type)
+        if not table_name:
+            messagebox.showerror("Error", "Invalid emergency type.")
+            return
+
+        conn = sqlite3.connect("emergency_db.sqlite")
+        cursor = conn.cursor()
+        cursor.execute(f"INSERT INTO {table_name} (name, address, emergency_type) VALUES (?, ?, ?)", 
+                       (name, address, emergency_type_selected))
+        conn.commit()
+        conn.close()
+
+        messagebox.showinfo("Success", f"An authorized personnel is on the way!\n\nDetails:\nName: {name}\nAddress: {address}\nEmergency Type: {emergency_type_selected}\nContact Person: {contact_person}\nContact: {contact_number}")
+        restart_program()
+
+    Button(root, text="Submit", font=("Times New Roman", 18, "bold"), bg="green", fg="white", 
+           width=20, height=2, command=save_to_db).pack(pady=40)
+    Button(root, text="Go Back", font=("Times New Roman", 18, "bold"), bg="gray", fg="white", 
+           width=20, height=2, command=restart_program).pack(pady=20)
